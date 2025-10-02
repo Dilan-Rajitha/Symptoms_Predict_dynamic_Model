@@ -1,61 +1,52 @@
-import os
-from pathlib import Path
-import joblib
-import requests
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional, Dict, Any
+from fastapi.middleware.cors import CORSMiddleware
+import joblib, requests, os
+from pathlib import Path
+import numpy as np
+import traceback
 
-# ---------- Setup ----------
-MODEL_PATH = Path("models/model.joblib")
-MODEL_PATH.parent.mkdir(exist_ok=True, parents=True)
-
-# ---------- Dynamic download ----------
-MODEL_URL = "https://github.com/Dilan-Rajitha/Symptoms_Predict/raw/main/models/model.joblib"
-
-if not MODEL_PATH.exists():
-    print("Downloading model dynamically...")
-    r = requests.get(MODEL_URL, stream=True)
-    with open(MODEL_PATH, "wb") as f:
-        for chunk in r.iter_content(chunk_size=8192):
-            f.write(chunk)
-    print("Model download complete!")
-
-# ---------- Load model ----------
-saved = joblib.load(MODEL_PATH)
-PIPELINE = saved["pipeline"]
-MLB = saved["mlb"]
-
-# ---------- FastAPI ----------
-app = FastAPI(title="Symptoms Predict API")
+# Setup
+app = FastAPI(title="Symptoms Predict API (Vercel)")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["*"],  # allow your RN app
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-class Request(BaseModel):
-    lang: Optional[str] = "en"
-    text: str
-    age: Optional[int] = None
-    sex: Optional[str] = None
-    vitals: Optional[Dict[str, Any]] = None
+MODEL_PATH = Path("models/model.joblib")
+MODEL_PATH.parent.mkdir(exist_ok=True, parents=True)
 
-def simple_triage(top):
-    if not top:
-        return {"level": "SELF_CARE", "why": ["No signal detected"]}
-    t0 = top[0]
-    if t0["id"] in {"ami","meningitis","heatstroke","dka","stroke","seizure"} and t0["prob"] > 0.35:
-        return {"level": "EMERGENCY", "why": ["Potential life-threatening pattern"]}
-    if t0["id"] in {"appendicitis","angina","dengue_fever","kidney_stones","cholera","typhoid"} and t0["prob"] > 0.35:
-        return {"level": "URGENT_TODAY", "why": [f"{t0['name']} suspicion"]}
-    if t0["prob"] < 0.25:
-        return {"level": "SELF_CARE", "why": ["Low-risk pattern; monitor"]}
-    return {"level": "GP_24_48H", "why": ["Moderate risk pattern"]}
+# Dynamic download
+if not MODEL_PATH.exists():
+    url = "https://github.com/Dilan-Rajitha/Symptoms_Predict/raw/main/models/model.joblib"
+    print("Downloading model...")
+    r = requests.get(url, stream=True)
+    with open(MODEL_PATH, "wb") as f:
+        for chunk in r.iter_content(chunk_size=8192):
+            f.write(chunk)
+    print("Model downloaded successfully")
+
+# Load model
+try:
+    saved = joblib.load(MODEL_PATH)
+    PIPELINE = saved["pipeline"]
+    MLB = saved["mlb"]
+except Exception as e:
+    print("Error loading model:", e)
+    PIPELINE = None
+    MLB = None
+
+# Request model
+class Request(BaseModel):
+    lang: str = "en"
+    text: str
+    age: int = 0
+    sex: str = "string"
+    vitals: dict = {}
 
 @app.get("/")
 def health():
@@ -64,15 +55,12 @@ def health():
 @app.post("/ai/symptom-check")
 def check(req: Request):
     try:
+        if PIPELINE is None or MLB is None:
+            return {"error": "Model not loaded."}
         proba = PIPELINE.predict_proba([req.text])[0]
-        idx = proba.argsort()[::-1][:3]
-        top = []
-        for i in idx:
-            cid = str(MLB.classes_[i])
-            p = float(proba[i])
-            top.append({"id": cid, "name": cid.replace("_", " ").title(), "prob": p, "prob_pct": round(p*100,2)})
-        triage = simple_triage(top)
-        return {"top_conditions": top, "triage": triage, "disclaimer": "Educational aid; not a medical diagnosis."}
+        idx = np.argsort(proba)[::-1][:3]
+        top = [{"id": str(MLB.classes_[i]), "prob": float(proba[i]), "prob_pct": round(float(proba[i])*100,2)} for i in idx]
+        triage = {"level": "GP_24_48H"}  # optional: add your triage rules
+        return {"top_conditions": top, "triage": triage, "disclaimer": "Educational aid; not medical advice."}
     except Exception as e:
-        import traceback
         return {"error": str(e), "trace": traceback.format_exc()}
