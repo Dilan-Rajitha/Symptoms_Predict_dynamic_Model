@@ -25,7 +25,7 @@ TMP_MODEL   = Path(os.getenv("VERCEL_TMP_DIR") or tempfile.gettempdir()) / "mode
 MODEL_PATH  = LOCAL_MODEL if LOCAL_MODEL.exists() else TMP_MODEL
 
 # ⚠️ CHANGE THIS to a PUBLIC direct link (GitHub Releases / S3 / Dropbox direct)
-MODEL_URL   = "https://github.com/Dilan-Rajitha/Symptoms_Predict/raw/main/models/model.joblib"
+MODEL_URL   = "https://github.com/Dilan-Rajitha/Symptoms_Predict/releases/download/model-v1/model.joblib"
 # GitHub 'raw' URL with LFS sometimes fails; Releases asset is more reliable.
 
 PIPELINE = None
