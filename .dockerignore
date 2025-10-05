@@ -1,7 +1,28 @@
+# .venv
+# __pycache__/
+# *.pyc
+# .git
+# .gitignore
+# data/
+# models/model.joblib
+
+# never ship to image
 .venv
-__pycache__/
+__pycache__
 *.pyc
 .git
 .gitignore
-data/
-models/model.joblib
+README.md
+Dockerfile
+.dockerignore
+data
+models
+src
+notebooks
+*.ipynb
+*.csv
+*.npz
+*.pkl
+*.joblib
+*.pt
+*.pth
